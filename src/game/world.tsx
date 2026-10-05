@@ -1,6 +1,8 @@
 "use client";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
+import { Sparkles, Stars } from "@react-three/drei";
+import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 
 export interface Star { id: number; x: number; z: number; taken: boolean; respawnT: number }
@@ -28,8 +30,7 @@ export interface Sim {
   paused: boolean;
 }
 
-export const ISLAND_R = 17;
-export const MAIL = { x: 0, z: -2 };
+export const ISLAND_R = 17;export const MAIL = { x: 0, z: -2 };
 export const PADS = [{ x: -9, z: 6 }, { x: 9, z: 6 }, { x: 0, z: 11 }];
 export const SPOTS: [number, number][] = [
   [-12, -8], [-5, -11], [5, -11], [12, -8],
@@ -50,6 +51,19 @@ export function makeSim(): Sim {
     rings: [],
     shake: 0, delivered: 0, paused: false,
   };
+}
+
+// 하위 모든 메시에 그림자 캐스팅 부여
+function Shade({ children }: { children: React.ReactNode }) {
+  const ref = useRef<THREE.Group>(null);
+  useEffect(() => {
+    ref.current?.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) {
+        o.castShadow = true;
+      }
+    });
+  }, []);
+  return <group ref={ref}>{children}</group>;
 }
 
 // ── 루모 (주인공) ─────────────────────────────────
@@ -75,6 +89,7 @@ export function Lumo({ sim }: { sim: React.RefObject<Sim> }) {
   });
   return (
     <group ref={root}>
+      <Shade>
       <group ref={body}>
         {/* 다리 */}
         <mesh position={[-0.22, 0.3, 0]}><capsuleGeometry args={[0.14, 0.35, 6, 10]} /><meshStandardMaterial color="#475569" /></mesh>
@@ -100,6 +115,7 @@ export function Lumo({ sim }: { sim: React.RefObject<Sim> }) {
         <mesh position={[-0.55, 1, 0]}><capsuleGeometry args={[0.12, 0.4, 6, 10]} /><meshStandardMaterial color="#fef3c7" /></mesh>
         <mesh position={[0.55, 1, 0]}><capsuleGeometry args={[0.12, 0.4, 6, 10]} /><meshStandardMaterial color="#fef3c7" /></mesh>
       </group>
+      </Shade>
       {/* 그림자 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
         <circleGeometry args={[0.55, 18]} />
@@ -148,7 +164,7 @@ export function Blobs({ sim }: { sim: React.RefObject<Sim> }) {
       if (!m) return;
       m.position.set(b.x, 0, b.z);
       const squash = 1 + Math.sin(t * 6 + i * 2) * 0.08;
-      m.scale.set(2 - squash > 1 ? 1 : 1 / Math.sqrt(squash), squash, 1);
+      m.scale.set(1 / Math.sqrt(squash), squash, 1);
       m.rotation.y = Math.atan2(
         b.wp[(b.i + 1) % b.wp.length][0] - b.x,
         b.wp[(b.i + 1) % b.wp.length][1] - b.z,
@@ -158,7 +174,8 @@ export function Blobs({ sim }: { sim: React.RefObject<Sim> }) {
   return (
     <group>
       {sim.current.blobs.map((b, i) => (
-        <group key={i} ref={(el) => { refs.current[i] = el; }}>
+        <Shade key={i}>
+        <group ref={(el) => { refs.current[i] = el; }}>
           <mesh position={[0, 0.7, 0]}>
             <sphereGeometry args={[0.8, 18, 18]} />
             <meshStandardMaterial color={b.mode === "chase" ? "#ef4444" : "#a855f7"} roughness={0.5} />
@@ -176,6 +193,7 @@ export function Blobs({ sim }: { sim: React.RefObject<Sim> }) {
             <meshBasicMaterial color="#000" transparent opacity={0.2} />
           </mesh>
         </group>
+        </Shade>
       ))}
     </group>
   );
@@ -191,6 +209,7 @@ export function Mailbox({ sim, gold }: { sim: React.RefObject<Sim>; gold: boolea
   const red = gold ? "#facc15" : "#dc2626";
   const dark = gold ? "#a16207" : "#991b1b";
   return (
+    <Shade>
     <group position={[MAIL.x, 0, MAIL.z]}>
       <mesh position={[0, 1.1, 0]}><cylinderGeometry args={[0.8, 0.8, 2.2, 18]} /><meshStandardMaterial color={red} roughness={0.4} /></mesh>
       <mesh position={[0, 2.3, 0]}><sphereGeometry args={[0.8, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2]} /><meshStandardMaterial color={dark} /></mesh>
@@ -202,6 +221,7 @@ export function Mailbox({ sim, gold }: { sim: React.RefObject<Sim>; gold: boolea
         <meshBasicMaterial color={gold ? "#facc15" : "#fff"} transparent opacity={0.7} side={THREE.DoubleSide} />
       </mesh>
     </group>
+    </Shade>
   );
 }
 
@@ -272,7 +292,7 @@ export function Island() {
   return (
     <group>
       {/* 섬 본체 */}
-      <mesh position={[0, -1.5, 0]}><cylinderGeometry args={[ISLAND_R, ISLAND_R - 0.5, 3, 40]} /><meshStandardMaterial color="#4ade80" roughness={0.9} /></mesh>
+      <mesh receiveShadow position={[0, -1.5, 0]}><cylinderGeometry args={[ISLAND_R, ISLAND_R - 0.5, 3, 40]} /><meshStandardMaterial color="#4ade80" roughness={0.9} /></mesh>
       <mesh position={[0, -3.4, 0]}><cylinderGeometry args={[ISLAND_R - 0.5, ISLAND_R - 3, 2.5, 40]} /><meshStandardMaterial color="#92400e" roughness={0.9} /></mesh>
       <mesh position={[0, -7.5, 0]}><coneGeometry args={[ISLAND_R - 5, 7, 24]} /><meshStandardMaterial color="#78716c" roughness={1} /></mesh>
       {/* 길 */}
@@ -333,12 +353,25 @@ export function FollowCam({ sim }: { sim: React.RefObject<Sim> }) {
 
 export function Stage({ sim, gold, children }: { sim: React.RefObject<Sim>; gold: boolean; children?: React.ReactNode }) {
   return (
-    <Canvas camera={{ position: [0, 12, 14], fov: 55 }} style={{ position: "absolute", inset: 0 }}>
-      <color attach="background" args={["#1e1b4b"]} />
-      <fog attach="fog" args={["#1e1b4b", 40, 75]} />
-      <ambientLight intensity={0.75} />
-      <directionalLight position={[10, 16, 8]} intensity={1.3} />
-      <pointLight position={[0, 6, 0]} intensity={12} distance={30} color="#fde68a" />
+    <Canvas
+      camera={{ position: [0, 12, 14], fov: 55 }}
+      style={{ position: "absolute", inset: 0 }}
+      shadows
+      dpr={[1, 2]}
+      gl={{ antialias: true }}
+      onCreated={({ gl }) => {
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.toneMappingExposure = 1.1;
+      }}
+    >
+      <color attach="background" args={["#0b1035"]} />
+      <fog attach="fog" args={["#1e1b4b", 42, 80]} />
+      <ambientLight intensity={0.55} />
+      <hemisphereLight args={["#8ea2ff", "#1d1332", 0.5]} />
+      <directionalLight position={[10, 16, 8]} intensity={1.6} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-22} shadow-camera-right={22} shadow-camera-top={22} shadow-camera-bottom={-22} />
+      <pointLight position={[0, 6, 0]} intensity={30} distance={34} color="#fde68a" />
+      <Stars radius={60} depth={30} count={1500} factor={4} fade speed={0.6} />
+      <Sparkles count={60} scale={[30, 8, 30]} position={[0, 4, 0]} size={3} speed={0.3} color="#fde68a" opacity={0.6} />
       <FollowCam sim={sim} />
       <Island />
       <Mailbox sim={sim} gold={gold} />
@@ -348,6 +381,10 @@ export function Stage({ sim, gold, children }: { sim: React.RefObject<Sim>; gold
       <Rings sim={sim} />
       <Lumo sim={sim} />
       {children}
+      <EffectComposer>
+        <Bloom intensity={0.9} luminanceThreshold={0.55} luminanceSmoothing={0.2} mipmapBlur />
+        <Vignette darkness={0.55} offset={0.25} />
+      </EffectComposer>
     </Canvas>
   );
 }
